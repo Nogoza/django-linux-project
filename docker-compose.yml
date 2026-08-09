@@ -1,0 +1,75 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    env_file:
+      - .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    deploy:
+      restart_policy:
+        condition: any
+
+  web:
+    image: nogoza/django-linux-project:latest 
+    # Ayağa kalkarken önce dosyaları topla, sonra migrate et, sonra Gunicorn'u başlat
+    command: sh -c "python manage.py collectstatic --noinput && python manage.py migrate && gunicorn --bind 0.0.0.0:8000 core.wsgi:application"
+    env_file:
+      - .env
+    volumes:
+      - django_static:/app/staticfiles
+    networks:
+      - frontend-net
+      - backend-net
+    depends_on:
+      db:
+        condition: service_healthy
+    
+    # --- ÖDEV: SIFIR KESİNTİ (ZERO DOWNTIME) AYARLARI ---
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"] # Uygulamanın 8000 portunda yanıt verip vermediğini kontrol eder
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s # Gunicorn ve migrate işlemlerinin bitmesi için biraz avans süresi
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+      restart_policy:
+        condition: any
+    # ----------------------------------------------------
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - django_static:/app/staticfiles:ro
+    networks:
+      - frontend-net
+    depends_on:
+      - db
+    deploy:
+      restart_policy:
+        condition: any
+
+networks:
+  frontend-net:
+  backend-net:
+
+volumes:
+  postgres_data:
+  django_static:
