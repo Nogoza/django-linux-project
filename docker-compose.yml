@@ -30,8 +30,7 @@ services:
       - frontend-net
       - backend-net
     depends_on:
-      db:
-        condition: service_healthy
+      - db
     
     # --- ÖDEV: SIFIR KESİNTİ (ZERO DOWNTIME) AYARLARI ---
     healthcheck:
